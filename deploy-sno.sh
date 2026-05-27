@@ -72,6 +72,28 @@ preflight() {
   fi
   echo "    all OK"
 
+  # Verify TLS certificate covers the cluster domains
+  if [[ -f "${CERT_FILE}" ]]; then
+    echo "==> Verifying TLS certificate against cluster domains"
+    local sans
+    sans=$(openssl x509 -in "${CERT_FILE}" -noout -ext subjectAltName 2>/dev/null \
+           | grep -oP 'DNS:[^,]+' | sed 's/DNS://g' || true)
+    local warn=0
+    # Check *.CLUSTER.DOMAIN (covers api.CLUSTER.DOMAIN)
+    if ! echo "${sans}" | grep -qF "*.${CLUSTER_NAME}.${BASE_DOMAIN}"; then
+      echo "    WARNING: cert does not cover *.${CLUSTER_NAME}.${BASE_DOMAIN} (needed for API)"
+      warn=1
+    fi
+    # Check *.apps.CLUSTER.DOMAIN (covers app routes)
+    if ! echo "${sans}" | grep -qF "*.${APPS_DOMAIN}"; then
+      echo "    WARNING: cert does not cover *.${APPS_DOMAIN} (needed for routes)"
+      warn=1
+    fi
+    if (( warn == 0 )); then
+      echo "    cert OK"
+    fi
+  fi
+  
   # Ensure qemu user can traverse path to install/cache dirs
   echo "==> Ensuring qemu user can access ${SCRIPT_DIR}"
   local dir="${SCRIPT_DIR}"
