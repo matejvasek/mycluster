@@ -27,7 +27,8 @@ BRIDGE_NAME="virbr-ocp"
 VM_NAME="ocp-sno"
 VM_VCPUS=12
 VM_RAM=32768      # MiB  (minimum 16384, 32768+ recommended)
-VM_DISK=120       # GiB
+VM_DISK=120       # GiB  (OS)
+VM_DATA_DISK=80   # GiB  (storage / LVMS)
 MAC_ADDRESS="52:54:00:00:00:01"
 LIBVIRT_IMAGES="/var/lib/libvirt/images"
 
@@ -278,7 +279,8 @@ create_vm() {
     sudo virsh destroy  "${VM_NAME}" 2>/dev/null || true
     sudo virsh undefine "${VM_NAME}" --nvram 2>/dev/null || true
   fi
-  sudo rm -f "${LIBVIRT_IMAGES}/${VM_NAME}.qcow2"
+  sudo rm -f "${LIBVIRT_IMAGES}/${VM_NAME}.qcow2" \
+              "${LIBVIRT_IMAGES}/${VM_NAME}-data.qcow2"
 
   sudo virt-install \
     --name "${VM_NAME}" \
@@ -287,6 +289,7 @@ create_vm() {
     --cpu host-passthrough \
     --os-variant fedora-coreos-stable \
     --disk "path=${LIBVIRT_IMAGES}/${VM_NAME}.qcow2,size=${VM_DISK},bus=virtio,format=qcow2" \
+    --disk "path=${LIBVIRT_IMAGES}/${VM_NAME}-data.qcow2,size=${VM_DATA_DISK},bus=virtio,format=qcow2" \
     --network "network=${NETWORK_NAME},mac=${MAC_ADDRESS},model=virtio" \
     --cdrom "${INSTALL_DIR}/agent.x86_64.iso" \
     --boot uefi \
