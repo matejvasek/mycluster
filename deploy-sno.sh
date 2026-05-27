@@ -1,5 +1,5 @@
 #!/bin/bash
-# Deploy Single-Node OpenShift on libvirt/KVM (IPv6-only, agent-based installer)
+# Deploy Single-Node OpenShift on libvirt/KVM (dual-stack, agent-based installer)
 set -euo pipefail
 
 ###############################################################################
@@ -8,12 +8,17 @@ set -euo pipefail
 CLUSTER_NAME="ocp"
 BASE_DOMAIN="mydomain.io"
 
-# IPv6 networking
-NODE_IP="2002:db8:cafe:d891::1"
-GATEWAY_IP="2002:db8:cafe:d891::fffe"   # host bridge IP / default gateway
-DNS_SERVER="${GATEWAY_IP}"               # DNS64 resolver reachable from VM
-NETWORK_CIDR="2002:db8:cafe:d891::/64"
-NETWORK_PREFIX=64
+# IPv4 networking (routed via host to local network)
+NODE_IPV4="10.0.200.10"
+GATEWAY_IPV4="10.0.200.1"            # host bridge IPv4
+NETWORK_CIDR_V4="10.0.200.0/24"
+
+# IPv6 networking (externally routed — DNS/ingress face this side)
+NODE_IPV6="2002:db8:cafe:d893::2"
+GATEWAY_IPV6="2002:db8:cafe:d893::1"    # host bridge IPv6
+DNS_SERVER="${GATEWAY_IPV6}"             # DNS64+NAT64 handled upstream; host forwards
+NETWORK_CIDR_V6="2002:db8:cafe:d893::/64"
+NETWORK_PREFIX_V6=64
 
 # Libvirt
 NETWORK_NAME="ocp-net"
@@ -25,17 +30,21 @@ VM_DISK=120       # GiB
 MAC_ADDRESS="52:54:00:00:00:01"
 LIBVIRT_IMAGES="/var/lib/libvirt/images"
 
-# Cluster-internal networks (ULA, don't change unless you have a reason)
-CLUSTER_NETWORK_CIDR="fd01::/48"
-CLUSTER_HOST_PREFIX=64
-SERVICE_NETWORK_CIDR="fd02::/112"
+# Cluster-internal networks (dual-stack: IPv4 first, then IPv6)
+CLUSTER_NETWORK_CIDR_V4="10.128.0.0/14"
+CLUSTER_HOST_PREFIX_V4=23
+CLUSTER_NETWORK_CIDR_V6="fd01::/48"
+CLUSTER_HOST_PREFIX_V6=64
+SERVICE_NETWORK_CIDR_V4="172.30.0.0/16"
+SERVICE_NETWORK_CIDR_V6="fd02::/112"
 
-# Files
-PULL_SECRET_FILE="/etc/cluster/pull-secrets.txt"
-SSH_KEY_FILE="${HOME}/.ssh/id_rsa.pub"
-CERT_FILE="/etc/cluster/certs/fullchain.pem"
-KEY_FILE="/etc/cluster/certs/privkey.pem"
-INSTALL_DIR="${HOME}/ocp-sno-install"
+# Files (relative to script directory)
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PULL_SECRET_FILE="${SCRIPT_DIR}/pull-secrets.json"
+SSH_KEY="ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIAPdZVircWy7FgCPkkbi049KU9LaQHGVD1xoXbkSB+62 openpgp:0x4B079C9C"
+CERT_FILE="${SCRIPT_DIR}/fullchain.pem"
+KEY_FILE="${SCRIPT_DIR}/privkey.pem"
+INSTALL_DIR="${SCRIPT_DIR}/ocp-sno-install"
 
 ###############################################################################
 # Derived values
@@ -55,7 +64,7 @@ preflight() {
   command -v virt-install     &>/dev/null || missing+=("virt-install")
   command -v oc               &>/dev/null || missing+=("oc (openshift-client)")
   [[ -f "${PULL_SECRET_FILE}" ]] || missing+=("pull-secret (${PULL_SECRET_FILE})")
-  [[ -f "${SSH_KEY_FILE}" ]]     || missing+=("ssh public key (${SSH_KEY_FILE})")
+  [[ -n "${SSH_KEY}" ]]           || missing+=("SSH_KEY not set")
   if (( ${#missing[@]} )); then
     echo "ERROR: missing prerequisites: ${missing[*]}" >&2; exit 1
   fi
@@ -79,7 +88,8 @@ create_network() {
   <name>${NETWORK_NAME}</name>
   <forward mode='route'/>
   <bridge name='${BRIDGE_NAME}' stp='on' delay='0'/>
-  <ip family='ipv6' address='${GATEWAY_IP}' prefix='${NETWORK_PREFIX}'/>
+  <ip address='${GATEWAY_IPV4}' netmask='255.255.255.0'/>
+  <ip family='ipv6' address='${GATEWAY_IPV6}' prefix='${NETWORK_PREFIX_V6}'/>
 </network>
 XMLEOF
 
@@ -98,9 +108,8 @@ generate_configs() {
   rm -rf "${INSTALL_DIR}"
   mkdir -p "${INSTALL_DIR}"
 
-  local pull_secret ssh_key
+  local pull_secret
   pull_secret=$(<"${PULL_SECRET_FILE}")
-  ssh_key=$(<"${SSH_KEY_FILE}")
 
   # --- install-config.yaml ---
   cat > "${INSTALL_DIR}/install-config.yaml" <<CFGEOF
@@ -121,16 +130,20 @@ controlPlane:
 networking:
   networkType: OVNKubernetes
   clusterNetwork:
-  - cidr: ${CLUSTER_NETWORK_CIDR}
-    hostPrefix: ${CLUSTER_HOST_PREFIX}
+  - cidr: ${CLUSTER_NETWORK_CIDR_V4}
+    hostPrefix: ${CLUSTER_HOST_PREFIX_V4}
+  - cidr: ${CLUSTER_NETWORK_CIDR_V6}
+    hostPrefix: ${CLUSTER_HOST_PREFIX_V6}
   serviceNetwork:
-  - ${SERVICE_NETWORK_CIDR}
+  - ${SERVICE_NETWORK_CIDR_V4}
+  - ${SERVICE_NETWORK_CIDR_V6}
   machineNetwork:
-  - cidr: ${NETWORK_CIDR}
+  - cidr: ${NETWORK_CIDR_V4}
+  - cidr: ${NETWORK_CIDR_V6}
 platform:
   none: {}
 pullSecret: '${pull_secret}'
-sshKey: '${ssh_key}'
+sshKey: '${SSH_KEY}'
 CFGEOF
 
   # --- agent-config.yaml ---
@@ -139,7 +152,7 @@ apiVersion: v1beta1
 kind: AgentConfig
 metadata:
   name: ${CLUSTER_NAME}
-rendezvousIP: "${NODE_IP}"
+rendezvousIP: "${NODE_IPV4}"
 hosts:
 - hostname: sno.${CLUSTER_NAME}.${BASE_DOMAIN}
   role: master
@@ -154,22 +167,30 @@ hosts:
       type: ethernet
       state: up
       ipv4:
-        enabled: false
+        enabled: true
+        dhcp: false
+        address:
+        - ip: "${NODE_IPV4}"
+          prefix-length: 24
       ipv6:
         enabled: true
         autoconf: false
         dhcp: false
         address:
-        - ip: "${NODE_IP}"
-          prefix-length: ${NETWORK_PREFIX}
+        - ip: "${NODE_IPV6}"
+          prefix-length: ${NETWORK_PREFIX_V6}
     dns-resolver:
       config:
         server:
         - "${DNS_SERVER}"
     routes:
       config:
+      - destination: 0.0.0.0/0
+        next-hop-address: "${GATEWAY_IPV4}"
+        next-hop-interface: ${NODE_IFACE}
+        table-id: 254
       - destination: "::/0"
-        next-hop-address: "${GATEWAY_IP}"
+        next-hop-address: "${GATEWAY_IPV6}"
         next-hop-interface: ${NODE_IFACE}
         table-id: 254
 AGENTEOF
@@ -290,12 +311,13 @@ apply_certs() {
 main() {
   echo "========================================"
   echo " SNO Deployment: ${CLUSTER_NAME}.${BASE_DOMAIN}"
-  echo " Node IP:        ${NODE_IP}"
+  echo " Node IPv4:      ${NODE_IPV4} (internal)"
+  echo " Node IPv6:      ${NODE_IPV6} (external)"
   echo " API:            ${API_DOMAIN}"
   echo " Apps wildcard:  *.${APPS_DOMAIN}"
   echo "========================================"
   echo ""
-  echo "Required DNS AAAA records (all → ${NODE_IP}):"
+  echo "Required DNS AAAA records (all → ${NODE_IPV6}):"
   echo "  ${API_DOMAIN}"
   echo "  api-int.${CLUSTER_NAME}.${BASE_DOMAIN}"
   echo "  *.${APPS_DOMAIN}"
