@@ -19,6 +19,7 @@ GATEWAY_IPV6="2002:db8:cafe:d893::1"    # host bridge IPv6
 DNS_SERVER="${GATEWAY_IPV6}"             # DNS64+NAT64 handled upstream; host forwards
 NETWORK_CIDR_V6="2002:db8:cafe:d893::/64"
 NETWORK_PREFIX_V6=64
+NTP_SERVER="pool.ntp.org"                # public NTP pool (IPv4+IPv6)
 
 # Libvirt
 NETWORK_NAME="ocp-net"
@@ -63,12 +64,21 @@ preflight() {
   command -v virsh            &>/dev/null || missing+=("virsh")
   command -v virt-install     &>/dev/null || missing+=("virt-install")
   command -v oc               &>/dev/null || missing+=("oc (openshift-client)")
+  command -v nmstatectl       &>/dev/null || missing+=("nmstatectl (nmstate)")
   [[ -f "${PULL_SECRET_FILE}" ]] || missing+=("pull-secret (${PULL_SECRET_FILE})")
   [[ -n "${SSH_KEY}" ]]           || missing+=("SSH_KEY not set")
   if (( ${#missing[@]} )); then
     echo "ERROR: missing prerequisites: ${missing[*]}" >&2; exit 1
   fi
   echo "    all OK"
+
+  # Ensure qemu user can traverse path to install/cache dirs
+  echo "==> Ensuring qemu user can access ${SCRIPT_DIR}"
+  local dir="${SCRIPT_DIR}"
+  while [[ "${dir}" != "/" ]]; do
+    sudo setfacl -m u:qemu:x "${dir}"
+    dir=$(dirname "${dir}")
+  done
 }
 
 ###############################################################################
@@ -76,7 +86,7 @@ preflight() {
 ###############################################################################
 create_network() {
   echo "==> Creating libvirt network '${NETWORK_NAME}'"
-  if virsh net-info "${NETWORK_NAME}" &>/dev/null; then
+  if sudo virsh net-info "${NETWORK_NAME}" &>/dev/null; then
     echo "    network already exists, skipping"
     return
   fi
@@ -153,6 +163,8 @@ kind: AgentConfig
 metadata:
   name: ${CLUSTER_NAME}
 rendezvousIP: "${NODE_IPV4}"
+additionalNTPSources:
+- "${NTP_SERVER}"
 hosts:
 - hostname: sno.${CLUSTER_NAME}.${BASE_DOMAIN}
   role: master
@@ -213,17 +225,21 @@ generate_iso() {
   # include openshift-install version in the hash
   hash=$(echo "${hash}-$(openshift-install version | head -1)" | sha256sum | cut -d' ' -f1)
 
-  local cached_iso="${cache_dir}/${hash}.iso"
+  local cached_prefix="${cache_dir}/${hash}"
 
-  if [[ -f "${cached_iso}" ]]; then
+  if [[ -f "${cached_prefix}.iso" && -d "${cached_prefix}.auth" ]]; then
     echo "==> Using cached agent ISO (hash: ${hash:0:12}…)"
-    ln -sf "${cached_iso}" "${INSTALL_DIR}/agent.x86_64.iso"
+    ln -sf "${cached_prefix}.iso" "${INSTALL_DIR}/agent.x86_64.iso"
+    cp "${cached_prefix}.state.json" "${INSTALL_DIR}/.openshift_install_state.json"
+    cp -r "${cached_prefix}.auth" "${INSTALL_DIR}/auth"
   else
     echo "==> Generating agent ISO (this may take a few minutes)"
     openshift-install --dir "${INSTALL_DIR}" agent create image
     mkdir -p "${cache_dir}"
-    cp "${INSTALL_DIR}/agent.x86_64.iso" "${cached_iso}"
-    echo "    cached as ${cached_iso}"
+    cp "${INSTALL_DIR}/agent.x86_64.iso" "${cached_prefix}.iso"
+    cp "${INSTALL_DIR}/.openshift_install_state.json" "${cached_prefix}.state.json"
+    cp -r "${INSTALL_DIR}/auth" "${cached_prefix}.auth"
+    echo "    cached as ${cached_prefix}.iso"
   fi
   echo "    ISO: ${INSTALL_DIR}/agent.x86_64.iso"
 }
@@ -235,12 +251,12 @@ create_vm() {
   echo "==> Creating VM '${VM_NAME}'"
 
   # Destroy any previous VM with the same name
-  if virsh dominfo "${VM_NAME}" &>/dev/null; then
+  if sudo virsh dominfo "${VM_NAME}" &>/dev/null; then
     echo "    destroying existing VM '${VM_NAME}'"
-    virsh destroy  "${VM_NAME}" 2>/dev/null || true
-    virsh undefine "${VM_NAME}" --nvram 2>/dev/null || true
+    sudo virsh destroy  "${VM_NAME}" 2>/dev/null || true
+    sudo virsh undefine "${VM_NAME}" --nvram 2>/dev/null || true
   fi
-  rm -f "${LIBVIRT_IMAGES}/${VM_NAME}.qcow2"
+  sudo rm -f "${LIBVIRT_IMAGES}/${VM_NAME}.qcow2"
 
   sudo virt-install \
     --name "${VM_NAME}" \
@@ -253,6 +269,7 @@ create_vm() {
     --cdrom "${INSTALL_DIR}/agent.x86_64.iso" \
     --boot uefi \
     --graphics vnc,listen=:: \
+    --check disk_size=off \
     --noautoconsole
 
   echo "    VM started. Console: sudo virsh console ${VM_NAME}"
