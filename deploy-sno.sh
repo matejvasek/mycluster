@@ -202,11 +202,29 @@ AGENTEOF
 }
 
 ###############################################################################
-# Step 3 — Generate agent ISO
+# Step 3 — Generate agent ISO (cached by config hash)
 ###############################################################################
 generate_iso() {
-  echo "==> Generating agent ISO (this may take a few minutes)"
-  openshift-install --dir "${INSTALL_DIR}" agent create image
+  local cache_dir="${SCRIPT_DIR}/.iso-cache"
+  local hash
+  hash=$(cat "${INSTALL_DIR}/install-config.yaml.bak" \
+             "${INSTALL_DIR}/agent-config.yaml.bak" \
+         | sha256sum | cut -d' ' -f1)
+  # include openshift-install version in the hash
+  hash=$(echo "${hash}-$(openshift-install version | head -1)" | sha256sum | cut -d' ' -f1)
+
+  local cached_iso="${cache_dir}/${hash}.iso"
+
+  if [[ -f "${cached_iso}" ]]; then
+    echo "==> Using cached agent ISO (hash: ${hash:0:12}…)"
+    ln -sf "${cached_iso}" "${INSTALL_DIR}/agent.x86_64.iso"
+  else
+    echo "==> Generating agent ISO (this may take a few minutes)"
+    openshift-install --dir "${INSTALL_DIR}" agent create image
+    mkdir -p "${cache_dir}"
+    cp "${INSTALL_DIR}/agent.x86_64.iso" "${cached_iso}"
+    echo "    cached as ${cached_iso}"
+  fi
   echo "    ISO: ${INSTALL_DIR}/agent.x86_64.iso"
 }
 

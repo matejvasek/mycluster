@@ -5,3 +5,6 @@ fullchain.pem
 
 # Generated install directory
 ocp-sno-install/
+
+# Cached agent ISOs
+.iso-cache/
