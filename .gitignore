@@ -1,0 +1,7 @@
+# Secrets
+pull-secrets.json
+privkey.pem
+fullchain.pem
+
+# Generated install directory
+ocp-sno-install/

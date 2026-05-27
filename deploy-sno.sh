@@ -311,7 +311,7 @@ apply_certs() {
 main() {
   echo "========================================"
   echo " SNO Deployment: ${CLUSTER_NAME}.${BASE_DOMAIN}"
-  echo " Node IPv4:      ${NODE_IPV4} (internal)"
+  echo " Node IPv4:      ${NODE_IPV4} (external)"
   echo " Node IPv6:      ${NODE_IPV6} (external)"
   echo " API:            ${API_DOMAIN}"
   echo " Apps wildcard:  *.${APPS_DOMAIN}"
