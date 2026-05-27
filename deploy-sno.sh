@@ -359,6 +359,10 @@ apply_certs() {
   oc patch apiserver/cluster --type=merge -p \
     "{\"spec\":{\"servingCerts\":{\"namedCertificates\":[{\"names\":[\"${API_DOMAIN}\"],\"servingCertificate\":{\"name\":\"custom-api-cert\"}}]}}}"
 
+  # Update kubeconfig to trust the new cert (Let's Encrypt is publicly trusted)
+  echo "    updating kubeconfig to use system CA trust"
+  sed -i '/^\s*certificate-authority-data:/d' "${INSTALL_DIR}/auth/kubeconfig"
+
   echo "    certificates applied — API servers will roll out (~5 min for SNO)"
 }
 
