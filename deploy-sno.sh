@@ -402,7 +402,11 @@ install_lvms() {
   echo "==> Installing LVM Storage operator"
   export KUBECONFIG="${INSTALL_DIR}/auth/kubeconfig"
 
-  oc apply -f - <<'MANIFEST'
+  local ocp_minor
+  ocp_minor=$(oc get clusterversion version -o jsonpath='{.status.desired.version}' | cut -d. -f1-2)
+  echo "    detected OCP ${ocp_minor}, using channel stable-${ocp_minor}"
+
+  oc apply -f - <<MANIFEST
 apiVersion: v1
 kind: Namespace
 metadata:
@@ -423,7 +427,7 @@ metadata:
   name: lvms-operator
   namespace: openshift-storage
 spec:
-  channel: stable
+  channel: stable-${ocp_minor}
   installPlanApproval: Automatic
   name: lvms-operator
   source: redhat-operators
