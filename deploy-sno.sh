@@ -444,6 +444,14 @@ MANIFEST
     sleep 5
   done
 
+  echo "    waiting for LVMCluster CRD ..."
+  for i in $(seq 1 36); do
+    if oc get crd lvmclusters.lvm.topolvm.io &>/dev/null; then
+      break
+    fi
+    sleep 5
+  done
+
   echo "    creating LVMCluster"
   oc apply -f - <<'MANIFEST'
 apiVersion: lvm.topolvm.io/v1alpha1
