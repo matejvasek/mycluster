@@ -288,8 +288,8 @@ create_vm() {
     --vcpus "${VM_VCPUS}" \
     --cpu host-passthrough \
     --os-variant fedora-coreos-stable \
-    --disk "path=${LIBVIRT_IMAGES}/${VM_NAME}.qcow2,size=${VM_DISK},bus=virtio,format=qcow2" \
-    --disk "path=${LIBVIRT_IMAGES}/${VM_NAME}-data.qcow2,size=${VM_DATA_DISK},bus=virtio,format=qcow2" \
+    --disk "path=${LIBVIRT_IMAGES}/${VM_NAME}.qcow2,size=${VM_DISK},bus=virtio,format=qcow2,cache=writeback" \
+    --disk "path=${LIBVIRT_IMAGES}/${VM_NAME}-data.qcow2,size=${VM_DATA_DISK},bus=virtio,format=qcow2,cache=writeback" \
     --network "network=${NETWORK_NAME},mac=${MAC_ADDRESS},model=virtio" \
     --cdrom "${INSTALL_DIR}/agent.x86_64.iso" \
     --boot uefi \
