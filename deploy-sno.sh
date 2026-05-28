@@ -388,6 +388,83 @@ apply_certs() {
 }
 
 ###############################################################################
+# Optional — Install LVM Storage operator (run: ./deploy-sno.sh install_lvms)
+###############################################################################
+install_lvms() {
+  echo "==> Installing LVM Storage operator"
+  export KUBECONFIG="${INSTALL_DIR}/auth/kubeconfig"
+
+  oc apply -f - <<'MANIFEST'
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: openshift-storage
+---
+apiVersion: operators.coreos.com/v1
+kind: OperatorGroup
+metadata:
+  name: openshift-storage-og
+  namespace: openshift-storage
+spec:
+  targetNamespaces:
+  - openshift-storage
+---
+apiVersion: operators.coreos.com/v1alpha1
+kind: Subscription
+metadata:
+  name: lvms-operator
+  namespace: openshift-storage
+spec:
+  channel: stable
+  installPlanApproval: Automatic
+  name: lvms-operator
+  source: redhat-operators
+  sourceNamespace: openshift-marketplace
+MANIFEST
+
+  echo "    waiting for operator deployment ..."
+  for i in $(seq 1 36); do
+    if oc get deployment lvms-operator -n openshift-storage &>/dev/null; then
+      oc wait deployment lvms-operator -n openshift-storage \
+        --for=condition=Available --timeout=180s
+      break
+    fi
+    sleep 5
+  done
+
+  echo "    creating LVMCluster"
+  oc apply -f - <<'MANIFEST'
+apiVersion: lvm.topolvm.io/v1alpha1
+kind: LVMCluster
+metadata:
+  name: lvmcluster
+  namespace: openshift-storage
+spec:
+  storage:
+    deviceClasses:
+    - name: vg1
+      default: true
+      thinPoolConfig:
+        name: thin-pool-1
+        sizePercent: 90
+        overprovisionRatio: 10
+MANIFEST
+
+  echo "    waiting for StorageClass ..."
+  for i in $(seq 1 30); do
+    if oc get storageclass lvms-vg1 &>/dev/null; then
+      echo "    StorageClass lvms-vg1 is available"
+      # Mark as default
+      oc annotate storageclass lvms-vg1 \
+        storageclass.kubernetes.io/is-default-class=true --overwrite
+      echo "    lvms-vg1 set as default StorageClass"
+      break
+    fi
+    sleep 5
+  done
+}
+
+###############################################################################
 # Main
 ###############################################################################
 main() {
