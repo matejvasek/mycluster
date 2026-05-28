@@ -307,11 +307,29 @@ create_vm() {
 wait_for_install() {
   echo "==> Waiting for installation to complete ..."
   echo "    (this typically takes 30-50 minutes)"
+
+  # Monitor VM state — RHCOS reboots (and sometimes shuts off) during install
+  _ensure_vm_running() {
+    while true; do
+      sleep 15
+      local state
+      state=$(sudo virsh domstate "${VM_NAME}" 2>/dev/null || echo "unknown")
+      if [[ "${state}" == "shut off" ]]; then
+        echo "    VM is shut off — restarting ..."
+        sudo virsh start "${VM_NAME}" 2>/dev/null || true
+      fi
+    done
+  }
+  _ensure_vm_running &
+  local vm_monitor_pid=$!
+
   openshift-install --dir "${INSTALL_DIR}" agent wait-for bootstrap-complete \
-    --log-level=info
+    --log-level=info || { kill "${vm_monitor_pid}" 2>/dev/null; return 1; }
   echo "==> Bootstrap complete, waiting for cluster install ..."
   openshift-install --dir "${INSTALL_DIR}" agent wait-for install-complete \
-    --log-level=info
+    --log-level=info || { kill "${vm_monitor_pid}" 2>/dev/null; return 1; }
+
+  kill "${vm_monitor_pid}" 2>/dev/null || true
   echo ""
   echo "==> Installation finished!"
   echo "    kubeconfig : ${INSTALL_DIR}/auth/kubeconfig"
