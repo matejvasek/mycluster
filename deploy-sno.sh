@@ -121,6 +121,14 @@ create_network() {
   <name>${NETWORK_NAME}</name>
   <forward mode='route'/>
   <bridge name='${BRIDGE_NAME}' stp='on' delay='0'/>
+  <dns>
+    <host ip='${NODE_IPV4}'>
+      <hostname>${BASE_DOMAIN}</hostname>
+    </host>
+    <host ip='${NODE_IPV6}'>
+      <hostname>${BASE_DOMAIN}</hostname>
+    </host>
+  </dns>
   <ip address='${GATEWAY_IPV4}' netmask='255.255.255.0'/>
   <ip family='ipv6' address='${GATEWAY_IPV6}' prefix='${NETWORK_PREFIX_V6}'/>
 </network>
