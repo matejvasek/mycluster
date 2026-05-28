@@ -485,6 +485,44 @@ MANIFEST
 }
 
 ###############################################################################
+# Optional — Enable internal image registry (run: ./deploy-sno.sh enable_registry)
+###############################################################################
+enable_registry() {
+  echo "==> Enabling internal image registry"
+  export KUBECONFIG="${INSTALL_DIR}/auth/kubeconfig"
+
+  # SNO only needs one replica with Recreate strategy (RWO volume)
+  oc patch configs.imageregistry.operator.openshift.io cluster --type merge \
+    --patch '{"spec":{"managementState":"Managed","rolloutStrategy":"Recreate","replicas":1,"storage":{"pvc":{"claim":"image-registry-storage"}}}}'
+
+  # Create RWO PVC (LVMS does not support RWX)
+  oc apply -f - <<'MANIFEST'
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: image-registry-storage
+  namespace: openshift-image-registry
+spec:
+  accessModes: [ReadWriteOnce]
+  resources:
+    requests:
+      storage: 20Gi
+  storageClassName: lvms-vg1
+MANIFEST
+
+  echo "    waiting for registry pod ..."
+  for i in $(seq 1 60); do
+    if oc get deployment image-registry -n openshift-image-registry &>/dev/null; then
+      oc wait deployment image-registry -n openshift-image-registry \
+        --for=condition=Available --timeout=180s
+      echo "    image registry is running"
+      break
+    fi
+    sleep 5
+  done
+}
+
+###############################################################################
 # Main
 ###############################################################################
 main() {
