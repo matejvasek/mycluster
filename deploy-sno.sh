@@ -553,7 +553,7 @@ main() {
   echo " Apps wildcard:  *.${APPS_DOMAIN}"
   echo "========================================"
   echo ""
-  echo "Required DNS AAAA records (all → ${NODE_IPV6}):"
+  echo "Required DNS records (→ ${NODE_IPV6} / ${NODE_IPV4}):"
   echo "  ${API_DOMAIN}"
   echo "  api-int.${CLUSTER_NAME}.${BASE_DOMAIN}"
   echo "  *.${APPS_DOMAIN}"
