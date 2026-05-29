@@ -43,7 +43,7 @@ SERVICE_NETWORK_CIDR_V6="fd02::/112"
 # Files (relative to script directory)
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PULL_SECRET_FILE="${SCRIPT_DIR}/pull-secrets.json"
-SSH_KEY="ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIAPdZVircWy7FgCPkkbi049KU9LaQHGVD1xoXbkSB+62 openpgp:0x4B079C9C"
+SSH_KEY=""  # paste your SSH public key here
 CERT_FILE="${SCRIPT_DIR}/fullchain.pem"
 KEY_FILE="${SCRIPT_DIR}/privkey.pem"
 INSTALL_DIR="${SCRIPT_DIR}/ocp-sno-install"
