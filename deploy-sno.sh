@@ -435,22 +435,32 @@ spec:
 MANIFEST
 
   echo "    waiting for operator deployment ..."
+  local found=0
   for i in $(seq 1 36); do
     if oc get deployment lvms-operator -n openshift-storage &>/dev/null; then
       oc wait deployment lvms-operator -n openshift-storage \
         --for=condition=Available --timeout=180s
+      found=1
       break
     fi
     sleep 5
   done
+  if (( ! found )); then
+    echo "    ERROR: lvms-operator deployment not found after 3 minutes" >&2; return 1
+  fi
 
   echo "    waiting for LVMCluster CRD ..."
+  found=0
   for i in $(seq 1 36); do
     if oc get crd lvmclusters.lvm.topolvm.io &>/dev/null; then
+      found=1
       break
     fi
     sleep 5
   done
+  if (( ! found )); then
+    echo "    ERROR: LVMCluster CRD not registered after 3 minutes" >&2; return 1
+  fi
 
   echo "    creating LVMCluster"
   oc apply -f - <<'MANIFEST'
@@ -471,17 +481,21 @@ spec:
 MANIFEST
 
   echo "    waiting for StorageClass ..."
+  found=0
   for i in $(seq 1 30); do
     if oc get storageclass lvms-vg1 &>/dev/null; then
       echo "    StorageClass lvms-vg1 is available"
-      # Mark as default
       oc annotate storageclass lvms-vg1 \
         storageclass.kubernetes.io/is-default-class=true --overwrite
       echo "    lvms-vg1 set as default StorageClass"
+      found=1
       break
     fi
     sleep 5
   done
+  if (( ! found )); then
+    echo "    ERROR: StorageClass lvms-vg1 not created after 2.5 minutes" >&2; return 1
+  fi
 }
 
 ###############################################################################
@@ -511,15 +525,20 @@ spec:
 MANIFEST
 
   echo "    waiting for registry pod ..."
+  local found=0
   for i in $(seq 1 60); do
     if oc get deployment image-registry -n openshift-image-registry &>/dev/null; then
       oc wait deployment image-registry -n openshift-image-registry \
         --for=condition=Available --timeout=180s
       echo "    image registry is running"
+      found=1
       break
     fi
     sleep 5
   done
+  if (( ! found )); then
+    echo "    ERROR: image-registry deployment not found after 5 minutes" >&2; return 1
+  fi
 }
 
 ###############################################################################
