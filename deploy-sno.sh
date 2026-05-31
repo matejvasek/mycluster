@@ -548,6 +548,109 @@ MANIFEST
 }
 
 ###############################################################################
+# Optional — Create developer user (run: ./deploy-sno.sh create_dev_user)
+###############################################################################
+create_dev_user() {
+  echo "==> Creating developer user"
+  export KUBECONFIG="${INSTALL_DIR}/auth/kubeconfig"
+
+  local dev_user="${NEW_USER:-developer}"
+  local dev_password="${NEW_USER_PASSWORD:-developer}"
+  local dev_htpasswd_entry="${NEW_USER_HTPASSWD:-}"
+
+  # Build htpasswd entry
+  local htpasswd_entry
+  if [[ -n "${dev_htpasswd_entry}" ]]; then
+    htpasswd_entry="${dev_htpasswd_entry}"
+    dev_user="${htpasswd_entry%%:*}"
+    echo "    using provided htpasswd entry for '${dev_user}'"
+  else
+    if ! command -v htpasswd &>/dev/null; then
+      echo "ERROR: htpasswd not found (install httpd-tools)" >&2; return 1
+    fi
+    htpasswd_entry=$(htpasswd -nbB "${dev_user}" "${dev_password}")
+    echo "    created bcrypt hash for '${dev_user}'"
+  fi
+
+  # Read existing htpasswd data and append/update user
+  local existing
+  existing=$(oc get secret htpass-dev-secret -n openshift-config \
+    -o jsonpath='{.data.htpasswd}' 2>/dev/null | base64 -d || true)
+
+  local updated
+  if [[ -n "${existing}" ]]; then
+    # Remove existing entry for this user, then append
+    updated=$(echo "${existing}" | grep -v "^${dev_user}:" || true)
+    updated="${updated}"$'\n'"${htpasswd_entry}"
+  else
+    updated="${htpasswd_entry}"
+  fi
+  # Remove blank lines
+  updated=$(echo "${updated}" | sed '/^$/d')
+
+  # Create/update the secret
+  echo "    updating htpasswd secret"
+  oc create secret generic htpass-dev-secret \
+    --from-literal=htpasswd="${updated}" \
+    -n openshift-config \
+    --dry-run=client -o yaml | oc apply -f -
+
+  # Configure OAuth (only if not already set up)
+  local existing_provider
+  existing_provider=$(oc get oauth/cluster \
+    -o jsonpath='{.spec.identityProviders[?(@.name=="dev-htpasswd")].name}' 2>/dev/null || true)
+
+  if [[ "${existing_provider}" != "dev-htpasswd" ]]; then
+    local other_providers
+    other_providers=$(oc get oauth/cluster \
+      -o jsonpath='{.spec.identityProviders[*].name}' 2>/dev/null || true)
+    if [[ -n "${other_providers}" ]]; then
+      echo "    NOTE: replacing existing identity providers (${other_providers})"
+    fi
+
+    echo "    configuring OAuth identity provider"
+    oc apply -f - <<'OAUTH_EOF'
+apiVersion: config.openshift.io/v1
+kind: OAuth
+metadata:
+  name: cluster
+spec:
+  identityProviders:
+  - name: dev-htpasswd
+    mappingMethod: claim
+    type: HTPasswd
+    htpasswd:
+      fileData:
+        name: htpass-dev-secret
+OAUTH_EOF
+
+    echo "    waiting for OAuth server rollout ..."
+    local found=0
+    for i in $(seq 1 60); do
+      local ready
+      ready=$(oc get deployment oauth-openshift -n openshift-authentication \
+              -o jsonpath='{.status.readyReplicas}' 2>/dev/null || echo "0")
+      if [[ "${ready}" -ge 1 ]]; then
+        found=1
+        break
+      fi
+      sleep 5
+    done
+    if (( ! found )); then
+      echo "    ERROR: OAuth server did not become ready after 5 minutes" >&2; return 1
+    fi
+    echo "    OAuth server ready"
+  else
+    echo "    OAuth identity provider already configured"
+  fi
+
+  echo ""
+  echo "    User '${dev_user}' is ready."
+  echo "    Log in:  oc login https://${API_DOMAIN}:6443 -u ${dev_user}"
+  echo "    Console: https://console-openshift-console.${APPS_DOMAIN}"
+}
+
+###############################################################################
 # Main
 ###############################################################################
 main() {

@@ -116,6 +116,15 @@ Any function can be run independently:
 
 # Enable the internal image registry
 ./deploy-sno.sh enable_registry
+
+# Create a developer user (non-admin, HTPasswd)
+./deploy-sno.sh create_dev_user
+
+# Create additional users
+NEW_USER=alice NEW_USER_PASSWORD=s3cret ./deploy-sno.sh create_dev_user
+
+# Or with a pre-hashed htpasswd entry (prompts for password)
+NEW_USER_HTPASSWD="$(htpasswd -nB jdoe)" ./deploy-sno.sh create_dev_user
 ```
 
 ## After deployment
