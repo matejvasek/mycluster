@@ -145,6 +145,16 @@ sudo virsh net-destroy ocp-net
 sudo virsh net-undefine ocp-net
 ```
 
+## Caveats
+
+- **Host memory**: Do not allocate more than roughly half of the host's
+  RAM to the VM. For example, allocating 48 GiB on a 64 GiB host caused
+  the OOM killer to terminate QEMU. The default 32 GiB leaves enough
+  headroom for the host, libvirtd, and page cache.
+- **Install timeout**: The first `wait-for install-complete` may time out
+  (typically around 70% progress). This is normal for SNO. Re-running
+  `./deploy-sno.sh wait_for_install` usually succeeds.
+
 ## Notes
 
 - **ISO caching**: The agent ISO is cached under `.iso-cache/` keyed by a
