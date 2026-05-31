@@ -73,7 +73,7 @@ defaults in the script.
 Example with environment overrides:
 
 ```bash
-BASE_DOMAIN=example.com IPV6_PREFIX=2001:db8:1:2 SSH_KEY="ssh-ed25519 AAAA..." ./deploy-sno.sh
+BASE_DOMAIN=example.com IPV6_PREFIX=2001:db8:1:2 SSH_KEY="$(cat ~/.ssh/id_ed25519.pub)" ./deploy-sno.sh
 ```
 
 See the script header for the full list of variables (network CIDRs,
