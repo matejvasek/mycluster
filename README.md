@@ -51,21 +51,33 @@ and the cluster uses self-signed certificates.
 
 ## Configuration
 
-Edit the variables at the top of `deploy-sno.sh`:
+All variables at the top of `deploy-sno.sh` can be overridden via
+environment variables. Environment values take precedence over the
+defaults in the script.
 
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `CLUSTER_NAME` | `ocp` | Cluster name |
 | `BASE_DOMAIN` | `mydomain.io` | Base DNS domain |
-| `NODE_IPV4` | `10.0.200.10` | Node IPv4 address |
-| `NODE_IPV6` | `2002:db8:cafe:d893::2` | Node IPv6 address |
+| `IPV6_PREFIX` | `2002:db8:cafe:d893` | IPv6 /64 prefix (node/gateway derived from this) |
+| `IPV4_SUBNET` | `10.0.200` | IPv4 /24 subnet (node/gateway derived from this) |
+| `SSH_KEY` | *(empty)* | SSH public key for `core` user |
 | `VM_VCPUS` | `12` | Virtual CPUs |
 | `VM_RAM` | `32768` | Memory in MiB (minimum 16384) |
 | `VM_DISK` | `120` | OS disk in GiB |
 | `VM_DATA_DISK` | `80` | Data disk in GiB (for LVMS) |
-| `SSH_KEY` | *(hardcoded)* | SSH public key for `core` user |
+| `NTP_SERVER` | `pool.ntp.org` | NTP server |
+| `VM_NAME` | `ocp-sno` | Libvirt VM name |
+| `NETWORK_NAME` | `ocp-net` | Libvirt network name |
 
-See the script header for the full list of network and cluster variables.
+Example with environment overrides:
+
+```bash
+BASE_DOMAIN=example.com IPV6_PREFIX=2001:db8:1:2 SSH_KEY="ssh-ed25519 AAAA..." ./deploy-sno.sh
+```
+
+See the script header for the full list of variables (network CIDRs,
+file paths, cluster-internal subnets, etc.).
 
 ## Usage
 

@@ -5,31 +5,33 @@ set -euo pipefail
 ###############################################################################
 # Configuration — adjust these to your environment
 ###############################################################################
-CLUSTER_NAME="ocp"
-BASE_DOMAIN="mydomain.io"
+CLUSTER_NAME="${CLUSTER_NAME:-ocp}"
+BASE_DOMAIN="${BASE_DOMAIN:-mydomain.io}"
 
 # IPv4 networking (routed via host to local network)
-NODE_IPV4="10.0.200.10"
-GATEWAY_IPV4="10.0.200.1"            # host bridge IPv4
-NETWORK_CIDR_V4="10.0.200.0/24"
+IPV4_SUBNET="${IPV4_SUBNET:-10.0.200}"
+NODE_IPV4="${NODE_IPV4:-${IPV4_SUBNET}.10}"
+GATEWAY_IPV4="${GATEWAY_IPV4:-${IPV4_SUBNET}.1}"      # host bridge IPv4
+NETWORK_CIDR_V4="${NETWORK_CIDR_V4:-${IPV4_SUBNET}.0/24}"
 
 # IPv6 networking (externally routed — DNS/ingress face this side)
-NODE_IPV6="2002:db8:cafe:d893::2"
-GATEWAY_IPV6="2002:db8:cafe:d893::1"    # host bridge IPv6
-DNS_SERVER="${GATEWAY_IPV6}"             # DNS64+NAT64 handled upstream; host forwards
-NETWORK_CIDR_V6="2002:db8:cafe:d893::/64"
-NETWORK_PREFIX_V6=64
-NTP_SERVER="pool.ntp.org"                # public NTP pool (IPv4+IPv6)
+IPV6_PREFIX="${IPV6_PREFIX:-2002:db8:cafe:d893}"
+NODE_IPV6="${NODE_IPV6:-${IPV6_PREFIX}::2}"
+GATEWAY_IPV6="${GATEWAY_IPV6:-${IPV6_PREFIX}::1}"         # host bridge IPv6
+DNS_SERVER="${DNS_SERVER:-${GATEWAY_IPV6}}"               # DNS64+NAT64 handled upstream; host forwards
+NETWORK_CIDR_V6="${NETWORK_CIDR_V6:-${IPV6_PREFIX}::/64}"
+NETWORK_PREFIX_V6="${NETWORK_PREFIX_V6:-64}"
+NTP_SERVER="${NTP_SERVER:-pool.ntp.org}"                  # public NTP pool (IPv4+IPv6)
 
 # Libvirt
-NETWORK_NAME="ocp-net"
-BRIDGE_NAME="virbr-ocp"
-VM_NAME="ocp-sno"
-VM_VCPUS=12
-VM_RAM=32768      # MiB  (minimum 16384, 32768+ recommended)
-VM_DISK=120       # GiB  (OS)
-VM_DATA_DISK=80   # GiB  (storage / LVMS)
-MAC_ADDRESS="52:54:00:00:00:01"
+NETWORK_NAME="${NETWORK_NAME:-ocp-net}"
+BRIDGE_NAME="${BRIDGE_NAME:-virbr-ocp}"
+VM_NAME="${VM_NAME:-ocp-sno}"
+VM_VCPUS="${VM_VCPUS:-12}"
+VM_RAM="${VM_RAM:-32768}"        # MiB  (minimum 16384, 32768+ recommended)
+VM_DISK="${VM_DISK:-120}"        # GiB  (OS)
+VM_DATA_DISK="${VM_DATA_DISK:-80}"   # GiB  (storage / LVMS)
+MAC_ADDRESS="${MAC_ADDRESS:-52:54:00:00:00:01}"
 LIBVIRT_IMAGES="/var/lib/libvirt/images"
 
 # Cluster-internal networks (dual-stack: IPv4 first, then IPv6)
@@ -42,10 +44,10 @@ SERVICE_NETWORK_CIDR_V6="fd02::/112"
 
 # Files (relative to script directory)
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PULL_SECRET_FILE="${SCRIPT_DIR}/pull-secrets.json"
-SSH_KEY=""  # paste your SSH public key here
-CERT_FILE="${SCRIPT_DIR}/fullchain.pem"
-KEY_FILE="${SCRIPT_DIR}/privkey.pem"
+PULL_SECRET_FILE="${PULL_SECRET_FILE:-${SCRIPT_DIR}/pull-secrets.json}"
+SSH_KEY="${SSH_KEY:-}"  # set via environment or paste here
+CERT_FILE="${CERT_FILE:-${SCRIPT_DIR}/fullchain.pem}"
+KEY_FILE="${KEY_FILE:-${SCRIPT_DIR}/privkey.pem}"
 INSTALL_DIR="${SCRIPT_DIR}/ocp-sno-install"
 
 ###############################################################################
