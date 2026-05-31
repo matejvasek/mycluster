@@ -163,6 +163,15 @@ sudo virsh net-undefine ocp-net
 - **Install timeout**: The first `wait-for install-complete` may time out
   (typically around 70% progress). This is normal for SNO. Re-running
   `./deploy-sno.sh wait_for_install` usually succeeds.
+- **PTR / reverse DNS on the host**: The host's systemd-resolved does not
+  automatically learn about libvirt's dnsmasq as a DNS server for the
+  bridge interface. Reverse lookups (`dig -x <vm-ip>`) from the host
+  will not query dnsmasq and will fail. To work around this, either
+  configure your upstream DNS server (e.g. Unbound on the router) to
+  forward the reverse zones to the bridge gateway IP, or manually set
+  `resolvectl dns virbr-ocp <gateway-ip>` and
+  `resolvectl default-route virbr-ocp false` (these are transient and
+  lost on reboot).
 
 ## Notes
 
