@@ -119,7 +119,7 @@ create_network() {
   local net_xml
   net_xml=$(mktemp /tmp/ocp-net-XXXXXX.xml)
   cat > "${net_xml}" <<XMLEOF
-<network>
+<network xmlns:dnsmasq='http://libvirt.org/schemas/network/dnsmasq/1.0'>
   <name>${NETWORK_NAME}</name>
   <forward mode='route'/>
   <bridge name='${BRIDGE_NAME}' stp='on' delay='0'/>
@@ -133,6 +133,10 @@ create_network() {
   </dns>
   <ip address='${GATEWAY_IPV4}' netmask='255.255.255.0'/>
   <ip family='ipv6' address='${GATEWAY_IPV6}' prefix='${NETWORK_PREFIX_V6}'/>
+  <dnsmasq:options>
+    <dnsmasq:option value='listen-address=${GATEWAY_IPV4}'/>
+    <dnsmasq:option value='listen-address=${GATEWAY_IPV6}'/>
+  </dnsmasq:options>
 </network>
 XMLEOF
 
