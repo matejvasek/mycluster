@@ -172,6 +172,10 @@ sudo virsh net-undefine ocp-net
   `resolvectl dns virbr-ocp <gateway-ip>` and
   `resolvectl default-route virbr-ocp false` (these are transient and
   lost on reboot).
+- **Firewall (VM to host)**: Firewalld's `libvirt-to-host` policy blocks
+  traffic from the VM to services running on the host. If the VM needs
+  to reach a host service, allow the port explicitly:
+  `firewall-cmd --permanent --policy=libvirt-to-host --add-port=<port>/<proto>`
 
 ## Notes
 
