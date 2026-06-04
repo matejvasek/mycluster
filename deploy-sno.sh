@@ -125,12 +125,12 @@ create_network() {
   <bridge name='${BRIDGE_NAME}' stp='on' delay='0'/>
   <dns>
     <host ip='${NODE_IPV4}'>
-      <hostname>${BASE_DOMAIN}</hostname>
+      <hostname>sno.${CLUSTER_NAME}.${BASE_DOMAIN}</hostname>
       <hostname>api.${CLUSTER_NAME}.${BASE_DOMAIN}</hostname>
       <hostname>api-int.${CLUSTER_NAME}.${BASE_DOMAIN}</hostname>
     </host>
     <host ip='${NODE_IPV6}'>
-      <hostname>${BASE_DOMAIN}</hostname>
+      <hostname>sno.${CLUSTER_NAME}.${BASE_DOMAIN}</hostname>
       <hostname>api.${CLUSTER_NAME}.${BASE_DOMAIN}</hostname>
       <hostname>api-int.${CLUSTER_NAME}.${BASE_DOMAIN}</hostname>
     </host>
