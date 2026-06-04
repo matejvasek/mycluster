@@ -31,8 +31,13 @@ from the rest of the network.
 
 ### DNS
 
-The following records must point to the node's IP addresses before
-installation:
+The libvirt network's dnsmasq automatically serves all required cluster
+DNS records (`api`, `api-int`, `*.apps`). The `create_network` step also
+configures systemd-resolved to route `*.BASE_DOMAIN` queries to dnsmasq,
+so no external DNS setup is needed for the host to reach the cluster.
+
+If other machines on the network need to resolve cluster names, point
+these records at the node's IP addresses in your DNS server:
 
 | Record | Example |
 |--------|---------|
@@ -125,6 +130,9 @@ NEW_USER=alice NEW_USER_PASSWORD=s3cret ./deploy-sno.sh create_dev_user
 
 # Or with a pre-hashed htpasswd entry (prompts for password)
 NEW_USER_HTPASSWD="$(htpasswd -nB jdoe)" ./deploy-sno.sh create_dev_user
+
+# Re-apply host DNS routing after reboot (resolvectl settings are transient)
+./deploy-sno.sh setup_dns
 ```
 
 ## After deployment
@@ -163,15 +171,14 @@ sudo virsh net-undefine ocp-net
 - **Install timeout**: The first `wait-for install-complete` may time out
   (typically around 70% progress). This is normal for SNO. Re-running
   `./deploy-sno.sh wait_for_install` usually succeeds.
-- **PTR / reverse DNS on the host**: The host's systemd-resolved does not
-  automatically learn about libvirt's dnsmasq as a DNS server for the
-  bridge interface. Reverse lookups (`dig -x <vm-ip>`) from the host
-  will not query dnsmasq and will fail. To work around this, either
-  configure your upstream DNS server (e.g. Unbound on the router) to
-  forward the reverse zones to the bridge gateway IP, or manually set
-  `resolvectl dns virbr-ocp <gateway-ip>` and
-  `resolvectl default-route virbr-ocp false` (these are transient and
-  lost on reboot).
+- **Host DNS after reboot**: The `setup_dns` resolvectl settings are
+  transient and lost on reboot. Re-run `./deploy-sno.sh setup_dns` to
+  restore host DNS routing for `*.BASE_DOMAIN` to the bridge dnsmasq.
+- **Host DNS with VM off**: systemd-resolved won't route queries to the
+  bridge dnsmasq when the bridge has no carrier (no VM connected). To
+  work around this, attach a dummy interface to keep the bridge up:
+  `ip link add dummy-ocp type dummy && ip link set dummy-ocp master virbr-ocp && ip link set dummy-ocp up`
+  (also transient — lost on reboot).
 - **Firewall (VM to host)**: Firewalld's `libvirt-to-host` policy blocks
   traffic from the VM to services running on the host. If the VM needs
   to reach a host service, allow the port explicitly:

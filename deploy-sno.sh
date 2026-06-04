@@ -126,9 +126,13 @@ create_network() {
   <dns>
     <host ip='${NODE_IPV4}'>
       <hostname>${BASE_DOMAIN}</hostname>
+      <hostname>api.${CLUSTER_NAME}.${BASE_DOMAIN}</hostname>
+      <hostname>api-int.${CLUSTER_NAME}.${BASE_DOMAIN}</hostname>
     </host>
     <host ip='${NODE_IPV6}'>
       <hostname>${BASE_DOMAIN}</hostname>
+      <hostname>api.${CLUSTER_NAME}.${BASE_DOMAIN}</hostname>
+      <hostname>api-int.${CLUSTER_NAME}.${BASE_DOMAIN}</hostname>
     </host>
   </dns>
   <ip address='${GATEWAY_IPV4}' netmask='255.255.255.0'/>
@@ -136,6 +140,8 @@ create_network() {
   <dnsmasq:options>
     <dnsmasq:option value='listen-address=${GATEWAY_IPV4}'/>
     <dnsmasq:option value='listen-address=${GATEWAY_IPV6}'/>
+    <dnsmasq:option value='address=/apps.${CLUSTER_NAME}.${BASE_DOMAIN}/${NODE_IPV4}'/>
+    <dnsmasq:option value='address=/apps.${CLUSTER_NAME}.${BASE_DOMAIN}/${NODE_IPV6}'/>
   </dnsmasq:options>
 </network>
 XMLEOF
@@ -144,7 +150,20 @@ XMLEOF
   sudo virsh net-start "${NETWORK_NAME}"
   sudo virsh net-autostart "${NETWORK_NAME}"
   rm -f "${net_xml}"
+
+  setup_dns
   echo "    done"
+}
+
+###############################################################################
+# Configure host DNS resolution via systemd-resolved (transient, re-runnable)
+###############################################################################
+setup_dns() {
+  echo "==> Configuring host DNS resolution for ${BASE_DOMAIN}"
+  sudo resolvectl dns "${BRIDGE_NAME}" "${GATEWAY_IPV4}" "${GATEWAY_IPV6}"
+  sudo resolvectl domain "${BRIDGE_NAME}" "~${BASE_DOMAIN}"
+  sudo resolvectl default-route "${BRIDGE_NAME}" false
+  echo "    queries for *.${BASE_DOMAIN} routed to dnsmasq on ${BRIDGE_NAME}"
 }
 
 ###############################################################################
@@ -662,10 +681,10 @@ main() {
   echo " Apps wildcard:  *.${APPS_DOMAIN}"
   echo "========================================"
   echo ""
-  echo "Required DNS records (→ ${NODE_IPV6} / ${NODE_IPV4}):"
-  echo "  ${API_DOMAIN}"
-  echo "  api-int.${CLUSTER_NAME}.${BASE_DOMAIN}"
-  echo "  *.${APPS_DOMAIN}"
+  echo "DNS records (served by dnsmasq on ${BRIDGE_NAME}):"
+  echo "  ${API_DOMAIN}  → ${NODE_IPV4} / ${NODE_IPV6}"
+  echo "  api-int.${CLUSTER_NAME}.${BASE_DOMAIN}  → ${NODE_IPV4} / ${NODE_IPV6}"
+  echo "  *.${APPS_DOMAIN}  → ${NODE_IPV4} / ${NODE_IPV6}"
   echo ""
   read -rp "Press Enter to continue (Ctrl-C to abort) ..."
 
