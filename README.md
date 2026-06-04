@@ -179,6 +179,12 @@ sudo virsh net-undefine ocp-net
   work around this, attach a dummy interface to keep the bridge up:
   `ip link add dummy-ocp type dummy && ip link set dummy-ocp master virbr-ocp && ip link set dummy-ocp up`
   (also transient — lost on reboot).
+- **Expired certificates after extended shutdown**: Kubelet client
+  certificates (24h validity) expire if the VM is off for more than a
+  day. On startup the kubelet falls back to `system:anonymous` and
+  cannot register the node. Fix by approving the pending CSRs (may
+  need two rounds):
+  `oc get csr -o name | xargs oc adm certificate approve`
 - **Firewall (VM to host)**: Firewalld's `libvirt-to-host` policy blocks
   traffic from the VM to services running on the host. If the VM needs
   to reach a host service, allow the port explicitly:
