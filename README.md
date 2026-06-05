@@ -45,6 +45,14 @@ these records at the node's IP addresses in your DNS server:
 | `api-int.<cluster>.<domain>` | `api-int.ocp.mydomain.io` |
 | `*.apps.<cluster>.<domain>` | `*.apps.ocp.mydomain.io` |
 
+**Do not** create a `*.<cluster>.<domain>` wildcard record. The
+installer queries `validateNoWildcardDNS.<cluster>.<domain>` and
+expects NXDOMAIN; a wildcard makes it resolve and the installer refuses
+to proceed. Even after installation, such a wildcard breaks pod DNS
+resolution — with `ndots:5`, short names like `github.com` would
+resolve as `github.com.<cluster>.<domain>` instead of falling through
+to the real domain.
+
 ### TLS certificates
 
 The certificate must include wildcard SANs for:
