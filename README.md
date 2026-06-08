@@ -203,6 +203,16 @@ sudo virsh net-undefine ocp-net
   traffic from the VM to services running on the host. If the VM needs
   to reach a host service, allow the port explicitly:
   `firewall-cmd --permanent --policy=libvirt-to-host --add-port=<port>/<proto>`
+- **Slow SSH to the node**: Fedora enables `GSSAPIAuthentication` by
+  default. Because dnsmasq resolves `BASE_DOMAIN` to the node IP, the
+  Kerberos library tries to reach a KDC on the node (port 88/udp),
+  which gets silently dropped by the firewall — causing a multi-second
+  timeout before SSH falls back to publickey. Fix by disabling GSSAPI
+  in `~/.ssh/config`:
+  ```
+  Host *.mydomain.io
+      GSSAPIAuthentication no
+  ```
 
 ## Notes
 
