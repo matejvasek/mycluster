@@ -139,6 +139,12 @@ NEW_USER=alice NEW_USER_PASSWORD=s3cret ./deploy-sno.sh create_dev_user
 # Or with a pre-hashed htpasswd entry (prompts for password)
 NEW_USER_HTPASSWD="$(htpasswd -nB jdoe)" ./deploy-sno.sh create_dev_user
 
+# Configure GitHub OAuth login (only listed users can log in)
+GITHUB_CLIENT_ID=xxx GITHUB_CLIENT_SECRET=yyy GITHUB_USERS=alice,bob ./deploy-sno.sh setup_github_oauth
+
+# Add more users later (existing mappings are preserved)
+GITHUB_CLIENT_ID=xxx GITHUB_CLIENT_SECRET=yyy GITHUB_USERS=charlie ./deploy-sno.sh setup_github_oauth
+
 # Re-apply host DNS routing after reboot (resolvectl settings are transient)
 ./deploy-sno.sh setup_dns
 ```

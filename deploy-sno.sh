@@ -670,6 +670,127 @@ OAUTH_EOF
 }
 
 ###############################################################################
+# Optional — GitHub OAuth (run: ./deploy-sno.sh setup_github_oauth)
+#
+# Uses mappingMethod: lookup — only pre-provisioned users can log in.
+# Provide GITHUB_USERS as a comma-separated list of GitHub handles.
+# The function resolves each handle to a numeric GitHub user ID (which is
+# what the OAuth callback uses) and creates the User/Identity/
+# UserIdentityMapping objects.  Re-running the function with additional
+# handles is safe — existing mappings are preserved.
+###############################################################################
+setup_github_oauth() {
+  echo "==> Configuring GitHub OAuth identity provider"
+  export KUBECONFIG="${INSTALL_DIR}/auth/kubeconfig"
+
+  local client_id="${GITHUB_CLIENT_ID:-}"
+  local client_secret="${GITHUB_CLIENT_SECRET:-}"
+  local users="${GITHUB_USERS:-}"
+
+  if [[ -z "${client_id}" ]] || [[ -z "${client_secret}" ]]; then
+    echo "ERROR: GITHUB_CLIENT_ID and GITHUB_CLIENT_SECRET must be set" >&2
+    echo "" >&2
+    echo "Create an OAuth App at https://github.com/settings/developers" >&2
+    echo "  Homepage URL:     https://console-openshift-console.${APPS_DOMAIN}" >&2
+    echo "  Callback URL:     https://oauth-openshift.${APPS_DOMAIN}/oauth2callback/github" >&2
+    return 1
+  fi
+
+  if [[ -z "${users}" ]]; then
+    echo "ERROR: GITHUB_USERS must be set (comma-separated GitHub handles)" >&2
+    echo "  Example: GITHUB_USERS=alice,bob ./deploy-sno.sh setup_github_oauth" >&2
+    return 1
+  fi
+
+  # Create the client secret
+  echo "    creating GitHub OAuth secret"
+  oc create secret generic github-oauth-secret \
+    --from-literal=clientSecret="${client_secret}" \
+    -n openshift-config \
+    --dry-run=client -o yaml | oc apply -f -
+
+  # Add GitHub identity provider if not already present
+  local existing_provider
+  existing_provider=$(oc get oauth/cluster \
+    -o jsonpath='{.spec.identityProviders[?(@.name=="github")].name}' 2>/dev/null || true)
+
+  if [[ "${existing_provider}" != "github" ]]; then
+    echo "    adding GitHub identity provider (mappingMethod: lookup)"
+    local provider
+    provider=$(jq -n --arg cid "${client_id}" '{
+      name: "github",
+      mappingMethod: "lookup",
+      type: "GitHub",
+      github: {
+        clientID: $cid,
+        clientSecret: { name: "github-oauth-secret" }
+      }
+    }')
+
+    oc get oauth/cluster -o json \
+      | jq --argjson provider "${provider}" \
+        '.spec.identityProviders = (.spec.identityProviders // []) + [$provider]' \
+      | oc apply -f -
+
+    echo "    waiting for OAuth server rollout ..."
+    local found=0
+    for i in $(seq 1 60); do
+      local ready
+      ready=$(oc get deployment oauth-openshift -n openshift-authentication \
+              -o jsonpath='{.status.readyReplicas}' 2>/dev/null || echo "0")
+      if [[ "${ready}" -ge 1 ]]; then
+        found=1
+        break
+      fi
+      sleep 5
+    done
+    if (( ! found )); then
+      echo "    ERROR: OAuth server did not become ready after 5 minutes" >&2; return 1
+    fi
+  else
+    echo "    GitHub identity provider already configured"
+  fi
+
+  # Provision user mappings
+  echo "    provisioning users ..."
+  IFS=',' read -ra user_array <<< "${users}"
+  for handle in "${user_array[@]}"; do
+    handle=$(echo "${handle}" | xargs)  # trim whitespace
+    [[ -z "${handle}" ]] && continue
+
+    # Resolve numeric GitHub user ID
+    local github_id
+    github_id=$(curl -sf "https://api.github.com/users/${handle}" | jq -r '.id') || true
+    if [[ -z "${github_id}" ]] || [[ "${github_id}" == "null" ]]; then
+      echo "    WARNING: could not resolve GitHub user '${handle}' — skipping" >&2
+      continue
+    fi
+    echo "    ${handle} → github:${github_id}"
+
+    # Create User (idempotent)
+    if ! oc get user "${handle}" &>/dev/null; then
+      oc create user "${handle}" >/dev/null
+    fi
+
+    # Create Identity (idempotent)
+    local identity="github:${github_id}"
+    if ! oc get identity "${identity}" &>/dev/null; then
+      oc create identity "${identity}" >/dev/null
+    fi
+
+    # Create UserIdentityMapping (idempotent)
+    if ! oc get useridentitymapping "${identity}" &>/dev/null; then
+      oc create useridentitymapping "${identity}" "${handle}" >/dev/null
+    fi
+  done
+
+  echo ""
+  echo "    GitHub OAuth configured (lookup mapping)."
+  echo "    Allowed users: ${users}"
+  echo "    Console: https://console-openshift-console.${APPS_DOMAIN}"
+}
+
+###############################################################################
 # Main
 ###############################################################################
 main() {
