@@ -142,6 +142,7 @@ create_network() {
     <dnsmasq:option value='listen-address=${GATEWAY_IPV6}'/>
     <dnsmasq:option value='address=/apps.${CLUSTER_NAME}.${BASE_DOMAIN}/${NODE_IPV4}'/>
     <dnsmasq:option value='address=/apps.${CLUSTER_NAME}.${BASE_DOMAIN}/${NODE_IPV6}'/>
+    <dnsmasq:option value='local=/${CLUSTER_NAME}.${BASE_DOMAIN}/'/>
   </dnsmasq:options>
 </network>
 XMLEOF
