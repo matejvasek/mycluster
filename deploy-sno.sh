@@ -621,28 +621,21 @@ create_dev_user() {
     -o jsonpath='{.spec.identityProviders[?(@.name=="dev-htpasswd")].name}' 2>/dev/null || true)
 
   if [[ "${existing_provider}" != "dev-htpasswd" ]]; then
-    local other_providers
-    other_providers=$(oc get oauth/cluster \
-      -o jsonpath='{.spec.identityProviders[*].name}' 2>/dev/null || true)
-    if [[ -n "${other_providers}" ]]; then
-      echo "    NOTE: replacing existing identity providers (${other_providers})"
-    fi
+    echo "    adding dev-htpasswd identity provider"
+    local provider
+    provider=$(jq -n '{
+      name: "dev-htpasswd",
+      mappingMethod: "claim",
+      type: "HTPasswd",
+      htpasswd: {
+        fileData: { name: "htpass-dev-secret" }
+      }
+    }')
 
-    echo "    configuring OAuth identity provider"
-    oc apply -f - <<'OAUTH_EOF'
-apiVersion: config.openshift.io/v1
-kind: OAuth
-metadata:
-  name: cluster
-spec:
-  identityProviders:
-  - name: dev-htpasswd
-    mappingMethod: claim
-    type: HTPasswd
-    htpasswd:
-      fileData:
-        name: htpass-dev-secret
-OAUTH_EOF
+    oc get oauth/cluster -o json \
+      | jq --argjson provider "${provider}" \
+        '.spec.identityProviders = (.spec.identityProviders // []) + [$provider]' \
+      | oc apply -f -
 
     echo "    waiting for OAuth server rollout ..."
     local found=0
