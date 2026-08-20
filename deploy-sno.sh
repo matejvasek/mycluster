@@ -2,6 +2,8 @@
 # Deploy Single-Node OpenShift on libvirt/KVM (dual-stack, agent-based installer)
 set -euo pipefail
 
+[ -f ".env" ] && source ".env"
+
 ###############################################################################
 # Configuration — adjust these to your environment
 ###############################################################################

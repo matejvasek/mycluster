@@ -2,6 +2,7 @@
 pull-secrets.json
 privkey.pem
 fullchain.pem
+.env
 
 # Generated install directory
 ocp-sno-install/
