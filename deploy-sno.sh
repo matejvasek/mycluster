@@ -98,14 +98,6 @@ preflight() {
       echo "    cert OK"
     fi
   fi
-  
-  # Ensure qemu user can traverse path to install/cache dirs
-  echo "==> Ensuring qemu user can access ${SCRIPT_DIR}"
-  local dir="${SCRIPT_DIR}"
-  while [[ "${dir}" != "/" ]]; do
-    sudo setfacl -m u:qemu:x "${dir}"
-    dir=$(dirname "${dir}")
-  done
 }
 
 ###############################################################################
@@ -318,6 +310,21 @@ create_vm() {
   sudo rm -f "${LIBVIRT_IMAGES}/${VM_NAME}.qcow2" \
               "${LIBVIRT_IMAGES}/${VM_NAME}-data.qcow2"
 
+  # Copy the agent ISO into the libvirt images dir. qemu already has
+  # access there (correct ownership + SELinux labels), so this avoids
+  # granting the qemu user traverse permission on the project directory.
+  # Skip the copy if an identical ISO is already there (same size+mtime);
+  # cp -p preserves the source mtime so the check holds across runs.
+  local vm_iso="${LIBVIRT_IMAGES}/${VM_NAME}.iso"
+  local src_iso="${INSTALL_DIR}/agent.x86_64.iso"
+  if [[ -f "${vm_iso}" ]] \
+     && [[ "$(stat -Lc '%s %Y' "${src_iso}")" == "$(sudo stat -c '%s %Y' "${vm_iso}")" ]]; then
+    echo "    agent ISO unchanged, reusing ${vm_iso}"
+  else
+    echo "    copying agent ISO to ${vm_iso}"
+    sudo cp -Lp "${src_iso}" "${vm_iso}"
+  fi
+
   sudo virt-install \
     --name "${VM_NAME}" \
     --memory "${VM_RAM}" \
@@ -327,7 +334,7 @@ create_vm() {
     --disk "path=${LIBVIRT_IMAGES}/${VM_NAME}.qcow2,size=${VM_DISK},bus=virtio,format=qcow2,cache=writeback" \
     --disk "path=${LIBVIRT_IMAGES}/${VM_NAME}-data.qcow2,size=${VM_DATA_DISK},bus=virtio,format=qcow2,cache=writeback" \
     --network "network=${NETWORK_NAME},mac=${MAC_ADDRESS},model=virtio" \
-    --cdrom "${INSTALL_DIR}/agent.x86_64.iso" \
+    --cdrom "${vm_iso}" \
     --boot uefi \
     --graphics vnc,listen=:: \
     --check disk_size=off \

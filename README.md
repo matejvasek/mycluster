@@ -102,7 +102,7 @@ file paths, cluster-internal subnets, etc.).
 
 This runs all steps in order:
 
-1. **preflight** -- check prerequisites, verify TLS SANs, set filesystem ACLs
+1. **preflight** -- check prerequisites, verify TLS SANs
 2. **create_network** -- create a routed libvirt network with DNS host entries
 3. **generate_configs** -- generate `install-config.yaml` and `agent-config.yaml`
 4. **generate_iso** -- build the agent ISO (cached by config hash)
@@ -172,6 +172,9 @@ sudo virsh start ocp-sno
 # Destroy and remove
 sudo virsh destroy ocp-sno
 sudo virsh undefine ocp-sno --nvram
+sudo rm -f /var/lib/libvirt/images/ocp-sno.qcow2 \
+           /var/lib/libvirt/images/ocp-sno-data.qcow2 \
+           /var/lib/libvirt/images/ocp-sno.iso
 sudo virsh net-destroy ocp-net
 sudo virsh net-undefine ocp-net
 ```
