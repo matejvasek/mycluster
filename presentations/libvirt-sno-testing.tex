@@ -1,0 +1,253 @@
+\documentclass[aspectratio=169,11pt]{beamer}
+\usepackage{iftex}
+\ifPDFTeX
+  \usepackage[T1]{fontenc}
+\else
+  \usepackage{fontspec}
+\fi
+\usepackage{tikz}
+\usetikzlibrary{positioning,arrows.meta}
+
+\newif\ifusebrandtheme
+\usebrandthemefalse
+\ifdefined\UseUnofficialRedHatTheme
+  \ifXeTeX
+    \IfFileExists{beamerthemeredhat.sty}{
+      \IfFileExists{img/logo.png}{
+        \IfFileExists{img/logo_white.png}{
+          \IfFontExistsTF{Red Hat Text}{
+            \IfFontExistsTF{Red Hat Mono}{\usebrandthemetrue}{}
+          }{}
+        }{}
+      }{}
+    }{}
+  \fi
+  \ifusebrandtheme\else
+    \PackageWarning{libvirt-sno-testing}{Unofficial theme prerequisites missing; using neutral theme}
+  \fi
+\fi
+
+\ifusebrandtheme
+  \usetheme{redhat}
+\else
+  \usetheme{Madrid}
+  \definecolor{labblue}{RGB}{28,65,89}
+  \usecolortheme[named=labblue]{structure}
+  \setbeamertemplate{blocks}[rounded][shadow=false]
+  \setbeamertemplate{title page}[default][rounded=true,shadow=false]
+  \setbeamertemplate{footline}[frame number]
+\fi
+\setbeamertemplate{navigation symbols}{}
+\setbeamersize{text margin left=9mm,text margin right=9mm}
+\setbeamertemplate{itemize items}[circle]
+
+\newcommand{\reposource}[1]{\par\vfill{\tiny Source: #1\par}}
+\newcommand{\readmeref}[1]{\href{https://github.com/matejvasek/mycluster/blob/master/README.md}{README: #1}}
+\newcommand{\scriptref}[1]{\href{https://github.com/matejvasek/mycluster/blob/master/deploy-sno.sh}{deploy-sno.sh: #1}}
+
+\title{An OpenShift Test Lab on Libvirt}
+\subtitle{Single-node provisioning, checks, and operational trade-offs}
+\author{}
+\date{}
+
+\begin{document}
+
+\begin{frame}
+  \titlepage
+  \begin{center}
+    \small Agent-based SNO installation with \texttt{matejvasek/mycluster}\\[1mm]
+    The repository provisions the lab; workload tests live elsewhere.
+  \end{center}
+\end{frame}
+
+\begin{frame}{Topology: one VM, routed dual-stack networking}
+  \centering
+  \begin{tikzpicture}[
+    box/.style={draw=structure.fg,rounded corners,align=center,
+      minimum height=15mm,text width=33mm,font=\small},
+    >={Latex}]
+    \node[box] (lan) {LAN / upstream router\\routes VM subnets};
+    \node[box,right=8mm of lan] (host) {KVM host\\libvirt bridge + dnsmasq};
+    \node[box,right=8mm of host] (vm) {SNO VM\\static IPv4 + IPv6};
+    \draw[<->,thick] (lan) -- (host);
+    \draw[<->,thick] (host) -- (vm);
+  \end{tikzpicture}
+  \begin{itemize}
+    \item Routed network, not NAT: upstream routes point to the host.
+    \item Agent-based installer; one control-plane node, zero workers;
+      \texttt{platform: none} and OVN-Kubernetes.
+    \item Two qcow2 disks: OS plus data for optional LVM Storage; UEFI boot.
+    \item \textbf{Defaults:} 12 vCPUs, 32 GiB RAM, 120 GiB OS, 80 GiB data.
+  \end{itemize}
+  \reposource{\readmeref{Network routing, Configuration}; \scriptref{generate\_configs, create\_vm}}
+\end{frame}
+
+\begin{frame}{Inputs: adapt the defaults to the host and LAN}
+  \begin{itemize}
+    \item Tools: \texttt{openshift-install}, \texttt{oc}, \texttt{virsh},
+      \texttt{virt-install}, \texttt{nmstatectl}; host administrative access
+      for libvirt/network operations.
+    \item Local pull secret and an SSH \emph{public} key via \texttt{SSH\_KEY}.
+    \item Configure \texttt{CLUSTER\_NAME}, \texttt{BASE\_DOMAIN},
+      \texttt{IPV4\_SUBNET}, \texttt{IPV6\_PREFIX}, and VM sizing.
+      These settings accept environment overrides; optional \texttt{./.env}
+      is sourced first and can itself set values.
+    \item Optional TLS chain/key: API and application-route wildcard SANs;
+      without the files, custom TLS configuration is skipped.
+    \item README cautions against allocating much more than half the host's
+      RAM to the VM: leave headroom for host services and page cache.
+  \end{itemize}
+  \begin{block}{Keep local inputs local}
+    \small \texttt{.gitignore} excludes the pull secret, TLS files,
+    \texttt{.env}, install directory, and ISO cache. Ignoring is not encryption.
+  \end{block}
+  \reposource{\readmeref{Prerequisites, Configuration, Caveats}; \scriptref{configuration, preflight};
+    \href{https://github.com/matejvasek/mycluster/blob/master/.gitignore}{.gitignore}}
+\end{frame}
+
+\begin{frame}[fragile]{Deployment: the documented sequence}
+\begin{verbatim}
+./deploy-sno.sh
+\end{verbatim}
+  \begin{enumerate}
+    \item \texttt{preflight}: check tools, pull secret, SSH key; inspect TLS SANs.
+    \item \texttt{create\_network}: routed libvirt network, DNS, host resolver.
+    \item \texttt{generate\_configs}: install-config and agent-config YAML.
+    \item \texttt{generate\_iso}: agent image; cache keyed by configs + installer version.
+    \item \texttt{create\_vm}: copy ISO into libvirt images; boot VM with two disks.
+    \item \texttt{wait\_for\_install}: bootstrap, then install completion.
+    \item \texttt{apply\_certs}: optional custom ingress and API certificates.
+  \end{enumerate}
+  \small Individual functions are callable as \texttt{./deploy-sno.sh <function>}.
+  \alert{Re-running the full deployment replaces the VM and both disks.}
+  \reposource{\readmeref{Usage}; \scriptref{main, generate\_iso, create\_vm}}
+\end{frame}
+
+\begin{frame}[fragile]{After install: smoke checks, not workload tests}
+\begin{verbatim}
+export KUBECONFIG=./ocp-sno-install/auth/kubeconfig
+oc get nodes
+oc get clusterversion
+oc get clusteroperators
+\end{verbatim}
+  \begin{itemize}
+    \item Suggested interpretation: inspect node readiness, cluster version,
+      and operator conditions before using the lab.
+    \item Console: \texttt{https://console-openshift-console.}\\
+      \texttt{apps.<cluster>.<domain>}
+    \item These are the documented post-install checks, not a test suite.
+    \item Workload tests are outside this repository; choose and run those
+      separately against the provisioned cluster.
+  \end{itemize}
+  \reposource{\readmeref{After installation}; \scriptref{wait\_for\_install, main}}
+\end{frame}
+
+\begin{frame}[fragile]{Optional: persistent storage and an internal registry}
+  \begin{columns}[T,onlytextwidth]
+    \begin{column}{0.48\textwidth}
+      \begin{block}{1. Install LVM Storage}
+\begin{verbatim}
+./deploy-sno.sh install_lvms
+\end{verbatim}
+        \small Uses the second data disk for dynamic PV provisioning.
+        Selects the operator channel from the OCP version and makes
+        \texttt{lvms-vg1} the default StorageClass.
+      \end{block}
+    \end{column}
+    \begin{column}{0.48\textwidth}
+      \begin{block}{2. Enable the registry}
+\begin{verbatim}
+./deploy-sno.sh enable_registry
+\end{verbatim}
+        \small Disabled by default on \texttt{platform: none}.
+        Creates a 20 GiB RWO PVC on \texttt{lvms-vg1}; one replica
+        with a \texttt{Recreate} rollout strategy.
+      \end{block}
+    \end{column}
+  \end{columns}
+  \medskip
+  \small These are explicit post-install steps, not part of \texttt{main}.
+  The registry configuration depends on the LVMS StorageClass.
+  \reposource{\readmeref{Post-install optional steps, Notes}; \scriptref{install\_lvms, enable\_registry}}
+\end{frame}
+
+\begin{frame}{Networking and DNS: the easy places to get stuck}
+  \begin{itemize}
+    \item Upstream routes: IPv4 VM subnet via the host's LAN IPv4 address;
+      IPv6 /64 via the host's link-local IPv6 address.
+    \item dnsmasq serves \texttt{api}, \texttt{api-int}, and \texttt{*.apps};
+      \texttt{setup\_dns} routes host base-domain queries to the bridge DNS.
+    \item Other clients need cluster records in their DNS, pointing at node IPs.
+    \item \alert{No DNS wildcard at \texttt{*.<cluster>.<domain>}.}
+      \texttt{validateNoWildcardDNS.<cluster>.<domain>} must return NXDOMAIN.
+      Application wildcard DNS and wildcard TLS SANs are distinct concerns.
+    \item The README also warns that a cluster-domain wildcard breaks pod
+      short-name resolution through search domains and \texttt{ndots:5}.
+  \end{itemize}
+  \reposource{\readmeref{Network routing, DNS, TLS certificates}; \scriptref{create\_network, setup\_dns}}
+\end{frame}
+
+\begin{frame}[fragile]{Recovery: distinguish slow installation from a broken lab}
+  \begin{itemize}
+    \item Install completion may time out around 70\%; README recommends
+      retrying the wait step, rather than rebuilding immediately:
+  \end{itemize}
+\begin{verbatim}
+./deploy-sno.sh wait_for_install
+\end{verbatim}
+  \begin{itemize}
+    \item During installation the script restarts a VM that shuts off
+      instead of rebooting.
+    \item Host resolver settings are transient; after a host reboot:
+  \end{itemize}
+\begin{verbatim}
+./deploy-sno.sh setup_dns
+\end{verbatim}
+  \begin{itemize}
+    \item After more than 24 hours powered off, kubelet client certificates
+      may have expired. README describes pending CSR approval, possibly
+      in two rounds. \textbf{Suggestion:} inspect and approve only expected
+      node CSRs, rather than approving all requests blindly.
+  \end{itemize}
+  \reposource{\readmeref{Caveats, Notes}; \scriptref{wait\_for\_install, setup\_dns}}
+\end{frame}
+
+\begin{frame}[fragile]{Lifecycle: preserve state or deliberately rebuild}
+  \textbf{Keep the VM and disks} (documented default VM name):
+\begin{verbatim}
+sudo virsh shutdown ocp-sno
+sudo virsh start ocp-sno
+\end{verbatim}
+  \begin{itemize}
+    \item \textbf{Suggestion:} confirm the guest is shut off before stopping
+      the host; re-run smoke checks after startup.
+    \item \textbf{Destructive cleanup:} README lists VM destroy/undefine
+      (including NVRAM), removal of both qcow2 disks and the copied ISO,
+      then network destroy/undefine. Adapt names and paths if overridden.
+    \item A fresh full deployment recreates the VM and disks; the ISO cache
+      can avoid image generation when configs and installer match.
+    \item \textbf{Suggestion:} back up needed workloads before cleanup or
+      re-running \texttt{create\_vm}; a cached ISO is not a workload backup.
+  \end{itemize}
+  \reposource{\readmeref{Cluster lifecycle, ISO caching}; \scriptref{create\_vm, generate\_iso}}
+\end{frame}
+
+\begin{frame}{Takeaway: a provisioned lab is the starting point}
+  \begin{block}{What this repository supplies}
+    A script to provision dual-stack SNO on libvirt, documented smoke
+    checks, and optional storage, registry, TLS, and identity helpers.
+  \end{block}
+  \begin{block}{What to plan separately}
+    Workload tests, their success criteria, and any workload backup or
+    restore procedure. No workload test suite is included here.
+  \end{block}
+  \begin{itemize}
+    \item Suggested checklist: size the host, verify routes/DNS, deploy,
+      inspect smoke checks, then run your separately chosen tests.
+    \item Know whether the next action preserves disks or recreates them.
+  \end{itemize}
+  \reposource{\href{https://github.com/matejvasek/mycluster}{Public repository};
+    \readmeref{Usage, Cluster lifecycle}; \scriptref{main, optional functions}}
+\end{frame}
+
+\end{document}
