@@ -32,7 +32,7 @@ assets, or Red Hat fonts. XeLaTeX can also build the neutral source.
 
 ## Optional unofficial theme
 
-The [openshift/ci-docs Beamer theme](https://github.com/openshift/ci-docs/tree/master/presentations/beamer)
+The [openshift/ci-docs Beamer theme](https://github.com/openshift/ci-docs/tree/main/presentations/beamer)
 is explicitly **unofficial**, not an official Red Hat presentation template.
 The default deck does not download or bundle it, logos, or fonts.
 
